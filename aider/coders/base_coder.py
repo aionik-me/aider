@@ -12,6 +12,7 @@ import backoff
 import git
 import openai
 import requests
+from jsonschema import Draft7Validator
 from openai.error import APIError, RateLimitError, ServiceUnavailableError, Timeout
 from rich.console import Console, Text
 from rich.live import Live
@@ -154,7 +155,7 @@ class Coder:
         if use_git:
             self.set_repo(fnames)
         else:
-            self.abs_fnames = [str(Path(fname).resolve()) for fname in fnames]
+            self.abs_fnames = set([str(Path(fname).resolve()) for fname in fnames])
 
         if self.repo:
             rel_repo_dir = os.path.relpath(self.repo.git_dir, os.getcwd())
@@ -177,7 +178,8 @@ class Coder:
                 self.io.tool_output(f"Repo-map: universal-ctags using {map_tokens} tokens")
             elif not self.repo_map.has_ctags and map_tokens > 0:
                 self.io.tool_output(
-                    f"Repo-map: basic using {map_tokens} tokens (universal-ctags not found)"
+                    f"Repo-map: basic using {map_tokens} tokens"
+                    f" ({self.repo_map.ctags_disabled_reason})"
                 )
             else:
                 self.io.tool_output("Repo-map: disabled because map_tokens == 0")
@@ -186,6 +188,15 @@ class Coder:
 
         for fname in self.get_inchat_relative_files():
             self.io.tool_output(f"Added {fname} to the chat.")
+
+        # validate the functions jsonschema
+        if self.functions:
+            for function in self.functions:
+                Draft7Validator.check_schema(function)
+
+            if self.verbose:
+                self.io.tool_output("JSON Schema:")
+                self.io.tool_output(json.dumps(self.functions, indent=4))
 
     def find_common_root(self):
         if len(self.abs_fnames) == 1:
